@@ -14,6 +14,7 @@ print_separator()
 try:
     # Ensure WIF authentication
     os.environ["SNOWFLAKE_AUTHENTICATOR"] = "WORKLOAD_IDENTITY"
+    os.environ["SNOWFLAKE_WORKLOAD_IDENTITY_PROVIDER"] = "AZURE"
 
     required_vars = [
         "SNOWFLAKE_ACCOUNT",

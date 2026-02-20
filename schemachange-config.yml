@@ -6,7 +6,7 @@ snowflake-account: ${SNOWFLAKE_ACCOUNT}
 snowflake-user: SVC_SNOWFLAKE_DEPLOY
 snowflake-role: ${SNOWFLAKE_ROLE}
 snowflake-warehouse: ${SNOWFLAKE_WAREHOUSE}
-snowflake-database: SNOWFLAKE
+snowflake-database: DEV_RAW
 snowflake-schema: PUBLIC
 
 change-history-table: CHANGE_HISTORY

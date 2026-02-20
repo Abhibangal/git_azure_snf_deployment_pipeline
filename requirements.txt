@@ -1,0 +1,2 @@
+schemachange
+snowflake-connector-python

@@ -1,0 +1,8 @@
+| Object Type        | Version Range |
+| ------------------ | ------------- |
+| Database / Schema  | 1 – 99        |
+| Tables             | 100 – 499     |
+| Views              | 500 – 799     |
+| Procedures         | 800 – 999     |
+| Functions          | 1000 – 1199   |
+| Data Fix / Scripts | 1200 – 1499   |

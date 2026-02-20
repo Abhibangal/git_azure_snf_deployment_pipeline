@@ -3,14 +3,15 @@ import subprocess
 import sys
 import yaml
 import traceback
+import json  # Added to handle JSON formatting for --vars
 
 print("\n======================================")
 print("🚀 Snowflake Deployment Starting")
-print("======================================\n")
+print("======================================")
 
 try:
     # ---------------------------------------------------
-    # 1️⃣ Get ENVIRONMENT
+    # 1️⃣ Get ENVIRONMENT (e.g., dev or prod)
     # ---------------------------------------------------
     environment = os.getenv("ENVIRONMENT")
 
@@ -39,10 +40,12 @@ try:
     print("\nResolving databases from YAML...\n")
 
     # ---------------------------------------------------
-    # 3️⃣ Explicitly resolve each database
+    # 3️⃣ Resolve databases and build the VARS dictionary
     # ---------------------------------------------------
-    for db_name in config["databases"]:
+    # We create a dictionary to hold the key-value pairs for schemachange --vars
+    schemachange_vars = {}
 
+    for db_name in config["databases"]:
         env_map = config["databases"][db_name]
 
         if environment not in env_map:
@@ -55,10 +58,17 @@ try:
             print(f"❌ Empty value for {db_name}")
             sys.exit(1)
 
-        # This is the important line
+        # Keep your existing logic: Set as env var
         os.environ[db_name] = resolved_value
+        
+        # New logic: Add to the dictionary for the --vars flag
+        schemachange_vars[db_name] = resolved_value
 
         print(f"✔ {db_name} → {resolved_value}")
+
+    # Convert the dictionary to a JSON string for the CLI
+    vars_json_string = json.dumps(schemachange_vars)
+    print(f"\n✔ Constructed vars_json_string: {vars_json_string}")
 
     # ---------------------------------------------------
     # 4️⃣ Validate METADATA specifically
@@ -97,19 +107,23 @@ try:
     print("\n✔ Using Azure Workload Identity")
 
     # ---------------------------------------------------
-    # 7️⃣ Run schemachange
+    # 7️⃣ Run schemachange with --vars
     # ---------------------------------------------------
     print("\nStarting schemachange...\n")
 
+    # Construct the command, including the --vars flag with the JSON string
     cmd = [
         "schemachange",
+        "deploy",
         "-f", "migrations",
-        "--config-folder", "."
+        "--config-folder", ".",
+        "--vars", vars_json_string
     ]
 
     print("Command:", " ".join(cmd))
     print("\n--------------------------------------\n")
 
+    # Use shell=False (default) for security; subprocess.run handles the list correctly
     result = subprocess.run(cmd)
 
     print("\n--------------------------------------\n")

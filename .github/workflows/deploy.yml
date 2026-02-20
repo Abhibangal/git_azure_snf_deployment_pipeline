@@ -16,17 +16,15 @@ jobs:
 
     steps:
 
-    # -------------------------------------------------------
-    # Step 1: Checkout repository
-    # -------------------------------------------------------
+    # ----------------------------
+    # Checkout repository
+    # ----------------------------
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # -------------------------------------------------------
-    # Step 2: Login to Azure using OIDC
-    # Uses repository secrets for identifiers
-    # No client secret involved
-    # -------------------------------------------------------
+    # ----------------------------
+    # Azure OIDC Login
+    # ----------------------------
     - name: Azure Login (OIDC)
       uses: azure/login@v1
       with:
@@ -34,30 +32,46 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-    # -------------------------------------------------------
-    # Step 3: Install yq for reading YAML config
-    # -------------------------------------------------------
+    # ----------------------------
+    # Install yq (pinned version)
+    # ----------------------------
     - name: Install yq
       run: |
-        sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+        set -euo pipefail
+        sudo wget https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64 -O /usr/local/bin/yq
         sudo chmod +x /usr/local/bin/yq
+        yq --version
 
-    # -------------------------------------------------------
-    # Step 4: Determine environment (dev or prod)
-    # -------------------------------------------------------
+    # ----------------------------
+    # Determine Environment
+    # ----------------------------
     - name: Determine Environment
       run: |
+        set -euo pipefail
         if [ "${{ github.ref_name }}" = "dev" ]; then
           echo "ENVIRONMENT=dev" >> $GITHUB_ENV
         else
           echo "ENVIRONMENT=prod" >> $GITHUB_ENV
         fi
 
-    # -------------------------------------------------------
-    # Step 5: Fetch Snowflake values from Azure Key Vault
-    # -------------------------------------------------------
+    # ----------------------------
+    # Validate Database Config File Exists
+    # ----------------------------
+    - name: Validate Database Config File
+      run: |
+        set -euo pipefail
+        if [ ! -f deploy_database_map.yml ]; then
+          echo "deploy_database_map.yml not found in repo root!"
+          exit 1
+        fi
+
+    # ----------------------------
+    # Fetch Snowflake Secrets from Key Vault
+    # ----------------------------
     - name: Fetch Secrets from Key Vault
       run: |
+        set -euo pipefail
+
         SNOWFLAKE_ACCOUNT=$(az keyvault secret show \
           --vault-name kv-snowflake-deploy \
           --name SNOWFLAKEACCOUNT \
@@ -73,61 +87,95 @@ jobs:
           --name SNOWFLAKEWAREHOUSE \
           --query value -o tsv)
 
+        if [ -z "$SNOWFLAKE_ACCOUNT" ]; then
+          echo "SNOWFLAKE_ACCOUNT is empty!"
+          exit 1
+        fi
+
+        if [ -z "$SNOWFLAKE_ROLE" ]; then
+          echo "SNOWFLAKE_ROLE is empty!"
+          exit 1
+        fi
+
+        if [ -z "$SNOWFLAKE_WAREHOUSE" ]; then
+          echo "SNOWFLAKE_WAREHOUSE is empty!"
+          exit 1
+        fi
+
         echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT" >> $GITHUB_ENV
         echo "SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE" >> $GITHUB_ENV
         echo "SNOWFLAKE_WAREHOUSE=$SNOWFLAKE_WAREHOUSE" >> $GITHUB_ENV
 
-    # -------------------------------------------------------
-    # Step 6: Resolve database mapping dynamically
-    # Reads deploy-database-map.yml
-    # -------------------------------------------------------
+    # ----------------------------
+    # Resolve Database Mapping
+    # ----------------------------
     - name: Resolve Databases
       run: |
-        for key in $(yq e '.databases | keys | .[]' deploy-database-map.yml); do
-          VALUE=$(yq e ".databases.${key}.${ENVIRONMENT}" deploy-database-map.yml)
+        set -euo pipefail
+
+        for key in $(yq e '.databases | keys | .[]' deploy_database_map.yml); do
+          VALUE=$(yq e ".databases.${key}.${ENVIRONMENT}" deploy_database_map.yml)
+
+          if [ -z "$VALUE" ]; then
+            echo "Missing mapping for $key in environment $ENVIRONMENT"
+            exit 1
+          fi
+
           echo "${key}=${VALUE}" >> $GITHUB_ENV
         done
 
-    # -------------------------------------------------------
-    # Step 7: Login to Azure Container Registry
-    # -------------------------------------------------------
+    # ----------------------------
+    # Login to ACR
+    # ----------------------------
     - name: Login to ACR
-      run: az acr login --name acrsnowflakedeploy123
+      run: |
+        set -euo pipefail
+        az acr login --name acrsnowflakedeploy123
 
-    # -------------------------------------------------------
-    # Step 8: Build Docker image
-    # -------------------------------------------------------
+    # ----------------------------
+    # Build Docker Image
+    # ----------------------------
     - name: Build Docker Image
       run: |
+        set -euo pipefail
         docker build -t acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }} .
 
-    # -------------------------------------------------------
-    # Step 9: Push Docker image to ACR
-    # -------------------------------------------------------
+    # ----------------------------
+    # Push Docker Image
+    # ----------------------------
     - name: Push Docker Image
       run: |
+        set -euo pipefail
         docker push acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
 
-    # -------------------------------------------------------
-    # Step 10: Update Azure Container App Job image
-    # -------------------------------------------------------
+    # ----------------------------
+    # Update Container App Job Image
+    # ----------------------------
     - name: Update Container App Job
       run: |
+        set -euo pipefail
         az containerapp job update \
           --name job-snowflake-deploy \
           --resource-group rg-snowflake-deploy \
           --image acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
 
-    # -------------------------------------------------------
-    # Step 11: Start Azure Container App Job
-    # Dynamically passes all database variables
-    # -------------------------------------------------------
+    # ----------------------------
+    # Start Azure Container Job
+    # ----------------------------
     - name: Start Azure Container Job
       run: |
+        set -euo pipefail
+
         ENV_VARS=""
 
-        for key in $(yq e '.databases | keys | .[]' deploy-database-map.yml); do
+        for key in $(yq e '.databases | keys | .[]' deploy_database_map.yml); do
           VALUE=$(printenv $key)
+
+          if [ -z "$VALUE" ]; then
+            echo "Environment variable $key is missing before job start!"
+            exit 1
+          fi
+
           ENV_VARS="$ENV_VARS $key=$VALUE"
         done
 

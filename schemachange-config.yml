@@ -3,7 +3,6 @@ config-version: 1
 root-folder: migrations
 
 snowflake_account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
-snowflake_user: "{{ env_var('SNOWFLAKE_USERNAME') }}"
 snowflake_role: "{{ env_var('SNOWFLAKE_ROLE') }}"
 snowflake_warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
 

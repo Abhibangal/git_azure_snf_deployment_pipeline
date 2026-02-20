@@ -6,7 +6,11 @@ snowflake-account: ${SNOWFLAKE_ACCOUNT}
 snowflake-user: SVC_SNOWFLAKE_DEPLOY
 snowflake-role: ${SNOWFLAKE_ROLE}
 snowflake-warehouse: ${SNOWFLAKE_WAREHOUSE}
-snowflake-database: DEV_RAW
-snowflake-schema: PUBLIC
 
+# Database comes dynamically from environment
+snowflake-database: ${METADATA}
+snowflake-schema: SCHEMACHANGE
+
+# Change history table name only (schema/database already set)
 change-history-table: CHANGE_HISTORY
+

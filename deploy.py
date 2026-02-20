@@ -104,8 +104,7 @@ try:
     cmd = [
         "schemachange",
         "-f", "migrations",
-        "-c", "schemachange-config.yml",
-        "-v"
+        "--config-folder", "."
     ]
 
     print("Command:", " ".join(cmd))

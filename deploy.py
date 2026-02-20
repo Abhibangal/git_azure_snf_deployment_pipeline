@@ -22,7 +22,9 @@ try:
     ]
 
     print("🔎 Validating required environment variables...")
-
+    print("SNOWFLAKE_ACCOUNT =", os.getenv("SNOWFLAKE_ACCOUNT"))
+    print("SNOWFLAKE_ROLE =", os.getenv("SNOWFLAKE_ROLE"))
+    print("SNOWFLAKE_WAREHOUSE =", os.getenv("SNOWFLAKE_WAREHOUSE"))
     for var in required_vars:
         if not os.getenv(var):
             print(f"❌ Missing required environment variable: {var}")

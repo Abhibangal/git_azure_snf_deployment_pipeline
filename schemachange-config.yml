@@ -2,15 +2,15 @@ config-version: 1
 
 root-folder: migrations
 
-snowflake-account: ${SNOWFLAKE_ACCOUNT}
-snowflake-user: SVC_SNOWFLAKE_DEPLOY
-snowflake-role: ${SNOWFLAKE_ROLE}
-snowflake-warehouse: ${SNOWFLAKE_WAREHOUSE}
+snowflake_account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+snowflake_user: "{{ env_var('SNOWFLAKE_USERNAME') }}"
+snowflake_role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+snowflake_warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
 
-# Database comes dynamically from environment
-snowflake-database: ${METADATA}
-snowflake-schema: SCHEMACHANGE
+snowflake_database: "{{ env_var('METADATA') }}"
 
-# Change history table name only (schema/database already set)
-change-history-table: CHANGE_HISTORY
+snowflake_schema: SCHEMACHANGE
 
+change-history-table: "SCHEMACHANGE.CHANGE_HISTORY"
+
+create-change-history-table: true

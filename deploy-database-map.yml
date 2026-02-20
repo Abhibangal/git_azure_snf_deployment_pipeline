@@ -10,7 +10,3 @@ databases:
   CONSUMPTION:
     dev: DEV_CONSUMPTION
     prod: PROD_CONSUMPTION
-
-  METADATA:
-    dev: DEV_METADATA
-    prod: PROD_METADATA

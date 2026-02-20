@@ -60,16 +60,16 @@ try:
 
         print(f"✔ {db_name} → {resolved_value}")
 
-    # ---------------------------------------------------
-    # 4️⃣ Validate METADATA specifically
-    # ---------------------------------------------------
-    metadata_db = os.getenv("METADATA")
+    # # ---------------------------------------------------
+    # # 4️⃣ Validate METADATA specifically
+    # # ---------------------------------------------------
+    # metadata_db = os.getenv("METADATA")
 
-    if not metadata_db:
-        print("❌ METADATA was not set from YAML.")
-        sys.exit(1)
+    # if not metadata_db:
+    #     print("❌ METADATA was not set from YAML.")
+    #     sys.exit(1)
 
-    print(f"\n✔ METADATA database resolved to: {metadata_db}")
+    # print(f"\n✔ METADATA database resolved to: {metadata_db}")
 
     # ---------------------------------------------------
     # 5️⃣ Validate Snowflake core variables

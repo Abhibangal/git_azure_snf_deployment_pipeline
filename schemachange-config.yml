@@ -6,10 +6,10 @@ snowflake_account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
 snowflake_role: "{{ env_var('SNOWFLAKE_ROLE') }}"
 snowflake_warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
 
-snowflake_database: "{{ env_var('METADATA') }}"
+snowflake_database: METADATA
 
 snowflake_schema: SCHEMACHANGE
 
-change-history-table: "SCHEMACHANGE.CHANGE_HISTORY"
+change-history-table: CHANGE_HISTORY
 
 create-change-history-table: true

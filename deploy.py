@@ -3,7 +3,11 @@ import subprocess
 import sys
 import traceback
 import re
-
+ 
+print("Current working directory:", os.getcwd())
+print("Files in container:")
+print(os.listdir(".")) 
+ 
 def print_separator():
     print("\n" + "=" * 80 + "\n")
 

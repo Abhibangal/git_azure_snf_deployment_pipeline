@@ -42,7 +42,7 @@ try:
     cmd = [
         "schemachange",
         "-f", "migrations",
-        "-c", "schemachange-config.yml"
+        "-c", "schemachange_config.yml"
     ]
 
     print("📦 Running schemachange...")

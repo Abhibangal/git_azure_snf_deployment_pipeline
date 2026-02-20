@@ -4,79 +4,101 @@ import sys
 import yaml
 import traceback
 
-print("\n==============================")
-print("🚀 Snowflake Deployment Start")
-print("==============================\n")
+print("\n======================================")
+print("🚀 Snowflake Deployment Starting")
+print("======================================\n")
 
 try:
-    # ----------------------------
-    # Detect Environment
-    # ----------------------------
+    # ---------------------------------------------------
+    # 1️⃣ Get ENVIRONMENT
+    # ---------------------------------------------------
     environment = os.getenv("ENVIRONMENT")
 
     if not environment:
         print("❌ ENVIRONMENT variable not set.")
         sys.exit(1)
 
-    print(f"Environment detected: {environment}")
+    print(f"✔ Environment detected: {environment}")
 
-    # ----------------------------
-    # Load database config
-    # ----------------------------
-    if not os.path.exists("deploy-database-map.yml"):
-        print("❌ deploy-database-map.yml not found in container.")
+    # ---------------------------------------------------
+    # 2️⃣ Load database mapping YAML
+    # ---------------------------------------------------
+    config_file = "deploy-database-map.yml"
+
+    if not os.path.exists(config_file):
+        print("❌ deploy-database-map.yml not found.")
         sys.exit(1)
 
-    with open("deploy-database-map.yml", "r") as f:
+    with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
-    databases = config.get("databases", {})
-    print(f"database = {databases}")
-
-    if not databases:
-        print("❌ No databases defined in deploy-database-map.yml")
+    if "databases" not in config:
+        print("❌ 'databases' section missing in YAML.")
         sys.exit(1)
 
-    print("\nResolving databases dynamically...\n")
+    print("\nResolving databases from YAML...\n")
 
-    for db_key, db_values in databases.items():
-        value = db_values.get(environment)
+    # ---------------------------------------------------
+    # 3️⃣ Explicitly resolve each database
+    # ---------------------------------------------------
+    for db_name in config["databases"]:
 
-        if not value:
-            print(f"❌ Missing mapping for {db_key} in environment {environment}")
+        env_map = config["databases"][db_name]
+
+        if environment not in env_map:
+            print(f"❌ No mapping for {db_name} in environment {environment}")
             sys.exit(1)
 
-        os.environ[db_key] = value
-        print(f"✔ {db_key} = {value}")
+        resolved_value = env_map[environment]
 
-    # ----------------------------
-    # Validate required Snowflake variables
-    # ----------------------------
-    required = [
+        if not resolved_value:
+            print(f"❌ Empty value for {db_name}")
+            sys.exit(1)
+
+        # This is the important line
+        os.environ[db_name] = resolved_value
+
+        print(f"✔ {db_name} → {resolved_value}")
+
+    # ---------------------------------------------------
+    # 4️⃣ Validate METADATA specifically
+    # ---------------------------------------------------
+    metadata_db = os.getenv("METADATA")
+
+    if not metadata_db:
+        print("❌ METADATA was not set from YAML.")
+        sys.exit(1)
+
+    print(f"\n✔ METADATA database resolved to: {metadata_db}")
+
+    # ---------------------------------------------------
+    # 5️⃣ Validate Snowflake core variables
+    # ---------------------------------------------------
+    required_vars = [
         "SNOWFLAKE_ACCOUNT",
         "SNOWFLAKE_ROLE",
         "SNOWFLAKE_WAREHOUSE"
     ]
 
-    print("\nValidating Snowflake environment variables...\n")
+    print("\nValidating Snowflake variables...\n")
 
-    for r in required:
-        if not os.getenv(r):
-            print(f"❌ Missing required variable: {r}")
+    for var in required_vars:
+        if not os.getenv(var):
+            print(f"❌ Missing required variable: {var}")
             sys.exit(1)
-        print(f"✔ {r} is set")
+        print(f"✔ {var} is set")
 
-    # ----------------------------
-    # Configure Workload Identity
-    # ----------------------------
+    # ---------------------------------------------------
+    # 6️⃣ Configure Azure Workload Identity
+    # ---------------------------------------------------
     os.environ["SNOWFLAKE_AUTHENTICATOR"] = "WORKLOAD_IDENTITY"
     os.environ["SNOWFLAKE_WORKLOAD_IDENTITY_PROVIDER"] = "AZURE"
 
-    print("\nUsing Azure Workload Identity authentication.")
+    print("\n✔ Using Azure Workload Identity")
 
-    # ----------------------------
-    # Run schemachange
-    # ----------------------------
+    # ---------------------------------------------------
+    # 7️⃣ Run schemachange
+    # ---------------------------------------------------
     print("\nStarting schemachange...\n")
 
     cmd = [
@@ -87,18 +109,20 @@ try:
     ]
 
     print("Command:", " ".join(cmd))
-    print()
+    print("\n--------------------------------------\n")
 
     result = subprocess.run(cmd)
 
+    print("\n--------------------------------------\n")
+
     if result.returncode != 0:
-        print("\n❌ Deployment failed.")
+        print("❌ Deployment failed.")
         sys.exit(result.returncode)
 
-    print("\n✅ Deployment successful.")
+    print("✅ Deployment successful.")
     sys.exit(0)
 
 except Exception:
-    print("\n💥 Unexpected error occurred:")
+    print("\n💥 Unexpected error:")
     traceback.print_exc()
     sys.exit(1)

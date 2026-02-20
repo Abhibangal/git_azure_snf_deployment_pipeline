@@ -1,0 +1,140 @@
+name: Snowflake Deployment
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    # -------------------------------------------------------
+    # Step 1: Checkout repository
+    # -------------------------------------------------------
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # -------------------------------------------------------
+    # Step 2: Login to Azure using OIDC
+    # Uses repository secrets for identifiers
+    # No client secret involved
+    # -------------------------------------------------------
+    - name: Azure Login (OIDC)
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    # -------------------------------------------------------
+    # Step 3: Install yq for reading YAML config
+    # -------------------------------------------------------
+    - name: Install yq
+      run: |
+        sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+        sudo chmod +x /usr/local/bin/yq
+
+    # -------------------------------------------------------
+    # Step 4: Determine environment (dev or prod)
+    # -------------------------------------------------------
+    - name: Determine Environment
+      run: |
+        if [ "${{ github.ref_name }}" = "dev" ]; then
+          echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+        else
+          echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+        fi
+
+    # -------------------------------------------------------
+    # Step 5: Fetch Snowflake values from Azure Key Vault
+    # -------------------------------------------------------
+    - name: Fetch Secrets from Key Vault
+      run: |
+        SNOWFLAKE_ACCOUNT=$(az keyvault secret show \
+          --vault-name kv-snowflake-deploy \
+          --name SNOWFLAKEACCOUNT \
+          --query value -o tsv)
+
+        SNOWFLAKE_ROLE=$(az keyvault secret show \
+          --vault-name kv-snowflake-deploy \
+          --name SNOWFLAKEROLE \
+          --query value -o tsv)
+
+        SNOWFLAKE_WAREHOUSE=$(az keyvault secret show \
+          --vault-name kv-snowflake-deploy \
+          --name SNOWFLAKEWAREHOUSE \
+          --query value -o tsv)
+
+        echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT" >> $GITHUB_ENV
+        echo "SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE" >> $GITHUB_ENV
+        echo "SNOWFLAKE_WAREHOUSE=$SNOWFLAKE_WAREHOUSE" >> $GITHUB_ENV
+
+    # -------------------------------------------------------
+    # Step 6: Resolve database mapping dynamically
+    # Reads deploy-database-map.yml
+    # -------------------------------------------------------
+    - name: Resolve Databases
+      run: |
+        for key in $(yq e '.databases | keys | .[]' deploy-database-map.yml); do
+          VALUE=$(yq e ".databases.${key}.${ENVIRONMENT}" deploy-database-map.yml)
+          echo "${key}=${VALUE}" >> $GITHUB_ENV
+        done
+
+    # -------------------------------------------------------
+    # Step 7: Login to Azure Container Registry
+    # -------------------------------------------------------
+    - name: Login to ACR
+      run: az acr login --name acrsnowflakedeploy123
+
+    # -------------------------------------------------------
+    # Step 8: Build Docker image
+    # -------------------------------------------------------
+    - name: Build Docker Image
+      run: |
+        docker build -t acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }} .
+
+    # -------------------------------------------------------
+    # Step 9: Push Docker image to ACR
+    # -------------------------------------------------------
+    - name: Push Docker Image
+      run: |
+        docker push acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
+
+    # -------------------------------------------------------
+    # Step 10: Update Azure Container App Job image
+    # -------------------------------------------------------
+    - name: Update Container App Job
+      run: |
+        az containerapp job update \
+          --name job-snowflake-deploy \
+          --resource-group rg-snowflake-deploy \
+          --image acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
+
+    # -------------------------------------------------------
+    # Step 11: Start Azure Container App Job
+    # Dynamically passes all database variables
+    # -------------------------------------------------------
+    - name: Start Azure Container Job
+      run: |
+        ENV_VARS=""
+
+        for key in $(yq e '.databases | keys | .[]' deploy-database-map.yml); do
+          VALUE=$(printenv $key)
+          ENV_VARS="$ENV_VARS $key=$VALUE"
+        done
+
+        az containerapp job start \
+          --name job-snowflake-deploy \
+          --resource-group rg-snowflake-deploy \
+          --env-vars $ENV_VARS \
+                     SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT \
+                     SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE \
+                     SNOWFLAKE_WAREHOUSE=$SNOWFLAKE_WAREHOUSE

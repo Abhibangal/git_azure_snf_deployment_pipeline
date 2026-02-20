@@ -1,0 +1,12 @@
+databases:
+  RAW:
+    dev: DEV_RAW
+    prod: PROD_RAW
+
+  HARMONIZED:
+    dev: DEV_HARMONIZED
+    prod: PROD_HARMONIZED
+
+  CONSUMPTION:
+    dev: DEV_CONSUMPTION
+    prod: PROD_CONSUMPTION

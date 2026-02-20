@@ -1,20 +1,23 @@
 import os
 import subprocess
+import sys
 
-print("Starting Snowflake deployment using WIF...")
+print("Starting Snowflake deployment using Workload Identity")
 
 os.environ["SNOWFLAKE_AUTHENTICATOR"] = "WORKLOAD_IDENTITY"
 
-result = subprocess.run(
-    ["schemachange", "-f", "migrations/to_be_deployed", "-c", "schemachange-config.yml"],
-    capture_output=True,
-    text=True
-)
+cmd = [
+    "schemachange",
+    "-f", "migrations",
+    "-c", "schemachange-config.yml"
+]
+
+result = subprocess.run(cmd, capture_output=True, text=True)
 
 print(result.stdout)
 print(result.stderr)
 
 if result.returncode != 0:
-    raise Exception("Deployment failed")
+    sys.exit(1)
 
-print("Deployment completed successfully")
+print("Deployment successful")

@@ -1,0 +1,4 @@
+
+USE DATABASE IDENTIFIER($HARMONIZED);
+create or replace view RESEARCH.V_employees as
+select * from IDENTIFIER($RAW).RESEARCH.EMPLOYEES;

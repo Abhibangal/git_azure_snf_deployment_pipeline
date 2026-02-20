@@ -63,13 +63,13 @@ try:
     # ---------------------------------------------------
     # 4️⃣ Validate METADATA specifically
     # ---------------------------------------------------
-    metadata_db = os.getenv("METADATA")
+    metadata_db = os.getenv("SNOWFLAKE_DATABASE")
 
     if not metadata_db:
-        print("❌ METADATA was not set from YAML.")
+        print("❌ SNOWFLAKE_DATABASE was not set from YAML.")
         sys.exit(1)
 
-    print(f"\n✔ METADATA database resolved to: {metadata_db}")
+    print(f"\n✔ SNOWFLAKE_DATABASE database resolved to: {metadata_db}")
 
     # ---------------------------------------------------
     # 5️⃣ Validate Snowflake core variables

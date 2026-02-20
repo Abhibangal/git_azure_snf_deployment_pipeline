@@ -23,7 +23,7 @@ jobs:
       uses: actions/checkout@v4
 
     # ----------------------------
-    # Azure OIDC Login
+    # Azure Login using OIDC
     # ----------------------------
     - name: Azure Login (OIDC)
       uses: azure/login@v1
@@ -33,17 +33,7 @@ jobs:
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     # ----------------------------
-    # Install yq (pinned version)
-    # ----------------------------
-    - name: Install yq
-      run: |
-        set -euo pipefail
-        sudo wget https://github.com/mikefarah/yq/releases/download/v4.44.1/yq_linux_amd64 -O /usr/local/bin/yq
-        sudo chmod +x /usr/local/bin/yq
-        yq --version
-
-    # ----------------------------
-    # Determine Environment
+    # Determine environment from branch
     # ----------------------------
     - name: Determine Environment
       run: |
@@ -53,79 +43,10 @@ jobs:
         else
           echo "ENVIRONMENT=prod" >> $GITHUB_ENV
         fi
+        echo "Environment resolved."
 
     # ----------------------------
-    # Validate Database Config File Exists
-    # ----------------------------
-    - name: Validate Database Config File
-      run: |
-        set -euo pipefail
-        if [ ! -f deploy_database_map.yml ]; then
-          echo "deploy_database_map.yml not found in repo root!"
-          exit 1
-        fi
-
-    # ----------------------------
-    # Fetch Snowflake Secrets from Key Vault
-    # ----------------------------
-    - name: Fetch Secrets from Key Vault
-      run: |
-        set -euo pipefail
-
-        SNOWFLAKE_ACCOUNT=$(az keyvault secret show \
-          --vault-name kv-snowflake-deploy \
-          --name SNOWFLAKEACCOUNT \
-          --query value -o tsv)
-
-        SNOWFLAKE_ROLE=$(az keyvault secret show \
-          --vault-name kv-snowflake-deploy \
-          --name SNOWFLAKEROLE \
-          --query value -o tsv)
-
-        SNOWFLAKE_WAREHOUSE=$(az keyvault secret show \
-          --vault-name kv-snowflake-deploy \
-          --name SNOWFLAKEWAREHOUSE \
-          --query value -o tsv)
-
-        if [ -z "$SNOWFLAKE_ACCOUNT" ]; then
-          echo "SNOWFLAKE_ACCOUNT is empty!"
-          exit 1
-        fi
-
-        if [ -z "$SNOWFLAKE_ROLE" ]; then
-          echo "SNOWFLAKE_ROLE is empty!"
-          exit 1
-        fi
-
-        if [ -z "$SNOWFLAKE_WAREHOUSE" ]; then
-          echo "SNOWFLAKE_WAREHOUSE is empty!"
-          exit 1
-        fi
-
-        echo "SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT" >> $GITHUB_ENV
-        echo "SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE" >> $GITHUB_ENV
-        echo "SNOWFLAKE_WAREHOUSE=$SNOWFLAKE_WAREHOUSE" >> $GITHUB_ENV
-
-    # ----------------------------
-    # Resolve Database Mapping
-    # ----------------------------
-    - name: Resolve Databases
-      run: |
-        set -euo pipefail
-
-        for key in $(yq e '.databases | keys | .[]' deploy_database_map.yml); do
-          VALUE=$(yq e ".databases.${key}.${ENVIRONMENT}" deploy_database_map.yml)
-
-          if [ -z "$VALUE" ]; then
-            echo "Missing mapping for $key in environment $ENVIRONMENT"
-            exit 1
-          fi
-
-          echo "${key}=${VALUE}" >> $GITHUB_ENV
-        done
-
-    # ----------------------------
-    # Login to ACR
+    # Login to Azure Container Registry
     # ----------------------------
     - name: Login to ACR
       run: |
@@ -160,29 +81,13 @@ jobs:
           --image acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
 
     # ----------------------------
-    # Start Azure Container Job
+    # Start Container Job
+    # Only pass ENVIRONMENT
     # ----------------------------
     - name: Start Azure Container Job
       run: |
         set -euo pipefail
-
-        ENV_VARS=""
-
-        for key in $(yq e '.databases | keys | .[]' deploy_database_map.yml); do
-          VALUE=$(printenv $key)
-
-          if [ -z "$VALUE" ]; then
-            echo "Environment variable $key is missing before job start!"
-            exit 1
-          fi
-
-          ENV_VARS="$ENV_VARS $key=$VALUE"
-        done
-
         az containerapp job start \
           --name job-snowflake-deploy \
           --resource-group rg-snowflake-deploy \
-          --env-vars $ENV_VARS \
-                     SNOWFLAKE_ACCOUNT=$SNOWFLAKE_ACCOUNT \
-                     SNOWFLAKE_ROLE=$SNOWFLAKE_ROLE \
-                     SNOWFLAKE_WAREHOUSE=$SNOWFLAKE_WAREHOUSE
+          --env-vars ENVIRONMENT="$ENVIRONMENT"

@@ -1,43 +1,83 @@
 import os
 import subprocess
 import sys
+import yaml
 import traceback
-import re
- 
-print("Current working directory:", os.getcwd())
-print("Files in container:")
-print(os.listdir(".")) 
- 
-def print_separator():
-    print("\n" + "=" * 80 + "\n")
 
-print_separator()
-print("🚀 SNOWFLAKE DEPLOYMENT STARTED")
-print_separator()
+print("\n==============================")
+print("🚀 Snowflake Deployment Start")
+print("==============================\n")
 
 try:
-    # Ensure WIF authentication
-    os.environ["SNOWFLAKE_AUTHENTICATOR"] = "WORKLOAD_IDENTITY"
-    os.environ["SNOWFLAKE_WORKLOAD_IDENTITY_PROVIDER"] = "AZURE"
+    # ----------------------------
+    # Detect Environment
+    # ----------------------------
+    environment = os.getenv("ENVIRONMENT")
 
-    required_vars = [
+    if not environment:
+        print("❌ ENVIRONMENT variable not set.")
+        sys.exit(1)
+
+    print(f"Environment detected: {environment}")
+
+    # ----------------------------
+    # Load database config
+    # ----------------------------
+    if not os.path.exists("deploy-database-map.yml"):
+        print("❌ deploy-database-map.yml not found in container.")
+        sys.exit(1)
+
+    with open("deploy-database-map.yml", "r") as f:
+        config = yaml.safe_load(f)
+
+    databases = config.get("databases", {})
+    print(f"database = {databases}")
+
+    if not databases:
+        print("❌ No databases defined in deploy-database-map.yml")
+        sys.exit(1)
+
+    print("\nResolving databases dynamically...\n")
+
+    for db_key, db_values in databases.items():
+        value = db_values.get(environment)
+
+        if not value:
+            print(f"❌ Missing mapping for {db_key} in environment {environment}")
+            sys.exit(1)
+
+        os.environ[db_key] = value
+        print(f"✔ {db_key} = {value}")
+
+    # ----------------------------
+    # Validate required Snowflake variables
+    # ----------------------------
+    required = [
         "SNOWFLAKE_ACCOUNT",
         "SNOWFLAKE_ROLE",
         "SNOWFLAKE_WAREHOUSE"
     ]
 
-    print("🔎 Validating required environment variables...")
-    print("SNOWFLAKE_ACCOUNT =", os.getenv("SNOWFLAKE_ACCOUNT"))
-    print("SNOWFLAKE_ROLE =", os.getenv("SNOWFLAKE_ROLE"))
-    print("SNOWFLAKE_WAREHOUSE =", os.getenv("SNOWFLAKE_WAREHOUSE"))
-    for var in required_vars:
-        if not os.getenv(var):
-            print(f"❌ Missing required environment variable: {var}")
-            sys.exit(1)
-        else:
-            print(f"✅ {var} is set")
+    print("\nValidating Snowflake environment variables...\n")
 
-    print_separator()
+    for r in required:
+        if not os.getenv(r):
+            print(f"❌ Missing required variable: {r}")
+            sys.exit(1)
+        print(f"✔ {r} is set")
+
+    # ----------------------------
+    # Configure Workload Identity
+    # ----------------------------
+    os.environ["SNOWFLAKE_AUTHENTICATOR"] = "WORKLOAD_IDENTITY"
+    os.environ["SNOWFLAKE_WORKLOAD_IDENTITY_PROVIDER"] = "AZURE"
+
+    print("\nUsing Azure Workload Identity authentication.")
+
+    # ----------------------------
+    # Run schemachange
+    # ----------------------------
+    print("\nStarting schemachange...\n")
 
     cmd = [
         "schemachange",
@@ -46,61 +86,19 @@ try:
         "-v"
     ]
 
-    print("📦 Running schemachange...")
     print("Command:", " ".join(cmd))
-    print_separator()
+    print()
 
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True
-    )
+    result = subprocess.run(cmd)
 
-    deployed_files = []
-    failed_file = None
-    error_detected = False
+    if result.returncode != 0:
+        print("\n❌ Deployment failed.")
+        sys.exit(result.returncode)
 
-    for line in process.stdout:
-        print(line.strip())
-
-        # Detect deployed files
-        match_success = re.search(r"Applying change script (.+\.sql)", line)
-        if match_success:
-            deployed_files.append(match_success.group(1))
-
-        # Detect error line
-        if "ERROR" in line or "Failed" in line:
-            error_detected = True
-
-        # Capture failed file
-        match_fail = re.search(r"Error applying change script (.+\.sql)", line)
-        if match_fail:
-            failed_file = match_fail.group(1)
-
-    process.wait()
-
-    print_separator()
-
-    if process.returncode != 0 or error_detected:
-        print("❌ DEPLOYMENT FAILED")
-        if failed_file:
-            print(f"❌ Failed Script: {failed_file}")
-        print(f"❌ Exit Code: {process.returncode}")
-        sys.exit(process.returncode)
-
-    print("✅ DEPLOYMENT SUCCESSFUL")
-    print("📋 Successfully Applied Scripts:")
-
-    for f in deployed_files:
-        print(f"   ✔ {f}")
-
-    print_separator()
+    print("\n✅ Deployment successful.")
     sys.exit(0)
 
 except Exception:
-    print_separator()
-    print("💥 UNEXPECTED ERROR OCCURRED")
+    print("\n💥 Unexpected error occurred:")
     traceback.print_exc()
-    print_separator()
     sys.exit(1)

@@ -14,7 +14,9 @@ This project implements a secure and automated Snowflake object deployment pipel
 - Snowflake Service User (TYPE = SERVICE)  
 
 The solution enables automated object deployment into Snowflake based on Git branch (Dev / Prod) without storing any secrets.
-
+---
+# 🧭 Architectural Flow
+![Alt Text](Git-azure-Snf-Deployment.jpg)
 ---
 
 # ☁️ Azure Setup
@@ -148,7 +150,7 @@ Click **Save**.
 
 This completes the **Azure Setup** section.
 
-# 🧭 Architectural Flow
+
 
 ## End-to-End Deployment Flow
 

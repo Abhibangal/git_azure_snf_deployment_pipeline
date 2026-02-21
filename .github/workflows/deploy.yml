@@ -43,7 +43,7 @@ jobs:
         else
           echo "ENVIRONMENT=prod" >> $GITHUB_ENV
         fi
-        echo "Environment resolved: $ENVIRONMENT"
+        echo "Environment resolved:"
 
     # ----------------------------
     # Install yq (YAML parser)

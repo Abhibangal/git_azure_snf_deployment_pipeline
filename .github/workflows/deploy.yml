@@ -1,0 +1,93 @@
+name: Snowflake Deployment
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+
+    # ----------------------------
+    # Checkout repository
+    # ----------------------------
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # ----------------------------
+    # Azure Login using OIDC
+    # ----------------------------
+    - name: Azure Login (OIDC)
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    # ----------------------------
+    # Determine environment from branch
+    # ----------------------------
+    - name: Determine Environment
+      run: |
+        set -euo pipefail
+        if [ "${{ github.ref_name }}" = "dev" ]; then
+          echo "ENVIRONMENT=dev" >> $GITHUB_ENV
+        else
+          echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+        fi
+        echo "Environment resolved."
+
+    # ----------------------------
+    # Login to Azure Container Registry
+    # ----------------------------
+    - name: Login to ACR
+      run: |
+        set -euo pipefail
+        az acr login --name acrsnowflakedeploy123
+
+    # ----------------------------
+    # Build Docker Image
+    # ----------------------------
+    - name: Build Docker Image
+      run: |
+        set -euo pipefail
+        docker build -t acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }} .
+
+    # ----------------------------
+    # Push Docker Image
+    # ----------------------------
+    - name: Push Docker Image
+      run: |
+        set -euo pipefail
+        docker push acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
+
+    # ----------------------------
+    # Update Container App Job Image
+    # ----------------------------
+    - name: Update Container App Job
+      run: |
+        set -euo pipefail
+        az containerapp job update \
+          --name job-snowflake-deploy \
+          --resource-group rg-snowflake-deploy \
+          --image acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
+
+    # ----------------------------
+    # Start Container Job
+    # Only pass ENVIRONMENT
+    # ----------------------------
+    - name: Start Azure Container Job
+      run: |
+        set -euo pipefail
+        az containerapp job start \
+          --name job-snowflake-deploy \
+          --resource-group rg-snowflake-deploy \
+          --env-vars ENVIRONMENT="$ENVIRONMENT"

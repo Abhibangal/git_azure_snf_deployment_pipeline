@@ -1,0 +1,14 @@
+config-version: 1
+
+root-folder: migrations
+
+snowflake_account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+snowflake_role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+snowflake_warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+
+snowflake_database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+snowflake_schema: SCHEMACHANGE
+
+change-history-table: "{{ env_var('SNOWFLAKE_DATABASE') }}.SCHEMACHANGE.CHANGE_HISTORY"
+
+create-change-history-table: true

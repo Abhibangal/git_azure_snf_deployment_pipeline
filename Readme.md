@@ -1,4 +1,4 @@
-# 🚀 GitHub → Azure → Snowflake Object Deployment Pipeline
+# 🤖  GitHub → Azure → Snowflake Object Deployment Pipeline
 
 ---
 

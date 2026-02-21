@@ -43,7 +43,38 @@ jobs:
         else
           echo "ENVIRONMENT=prod" >> $GITHUB_ENV
         fi
-        echo "Environment resolved."
+        echo "Environment resolved: $ENVIRONMENT"
+
+    # ----------------------------
+    # Install yq (YAML parser)
+    # ----------------------------
+    - name: Install yq
+      run: |
+        set -euo pipefail
+        sudo wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+        sudo chmod +x /usr/local/bin/yq
+
+    # ----------------------------
+    # Resolve METADATA database from YAML
+    # ----------------------------
+    - name: Resolve Metadata Database
+      run: |
+        set -euo pipefail
+
+        if [ ! -f deploy-database-map.yml ]; then
+          echo "deploy-database-map.yml not found!"
+          exit 1
+        fi
+
+        METADATA_DB=$(yq e ".databases.METADATA.${ENVIRONMENT}" deploy-database-map.yml)
+
+        if [ -z "$METADATA_DB" ] || [ "$METADATA_DB" = "null" ]; then
+          echo "Failed to resolve METADATA database!"
+          exit 1
+        fi
+
+        echo "Resolved METADATA DB: $METADATA_DB"
+        echo "SNOWFLAKE_DATABASE=$METADATA_DB" >> $GITHUB_ENV
 
     # ----------------------------
     # Login to Azure Container Registry
@@ -70,24 +101,28 @@ jobs:
         docker push acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
 
     # ----------------------------
-    # Update Container App Job Image
+    # Update Container App Job Image + Env Vars
     # ----------------------------
     - name: Update Container App Job
       run: |
         set -euo pipefail
+
+        echo "Updating job with:"
+        echo "ENVIRONMENT=$ENVIRONMENT"
+        echo "SNOWFLAKE_DATABASE=$SNOWFLAKE_DATABASE"
+
         az containerapp job update \
           --name job-snowflake-deploy \
           --resource-group rg-snowflake-deploy \
           --image acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }} \
-          --set-env-vars ENVIRONMENT=$ENVIRONMENT
+          --set-env-vars ENVIRONMENT=$ENVIRONMENT SNOWFLAKE_DATABASE=$SNOWFLAKE_DATABASE
 
     # ----------------------------
     # Start Container Job
-    # Only pass ENVIRONMENT
     # ----------------------------
     - name: Start Azure Container Job
       run: |
         set -euo pipefail
         az containerapp job start \
           --name job-snowflake-deploy \
-          --resource-group rg-snowflake-deploy 
+          --resource-group rg-snowflake-deploy

@@ -78,7 +78,8 @@ jobs:
         az containerapp job update \
           --name job-snowflake-deploy \
           --resource-group rg-snowflake-deploy \
-          --image acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }}
+          --image acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }} \
+          --set-env-vars ENVIRONMENT=$ENVIRONMENT
 
     # ----------------------------
     # Start Container Job
@@ -89,5 +90,4 @@ jobs:
         set -euo pipefail
         az containerapp job start \
           --name job-snowflake-deploy \
-          --resource-group rg-snowflake-deploy \
-          --env-vars ENVIRONMENT="$ENVIRONMENT"
+          --resource-group rg-snowflake-deploy 

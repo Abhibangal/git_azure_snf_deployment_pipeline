@@ -11,8 +11,8 @@ CREATE USER SVC_SNOWFLAKE_DEPLOY
   TYPE = SERVICE
   WORKLOAD_IDENTITY = (
     TYPE = AZURE
-    ISSUER = 'https://login.microsoftonline.com/740d81d4-e4d6-4689-8d63-22257ff4a74c/v2.0'
-    SUBJECT = '78c3a5c0-bc6a-4e54-94e4-16b5ccb38f44'
+    ISSUER = 'https://login.microsoftonline.com/<tenant id>/v2.0'
+    SUBJECT = '<object id>'
   )
   DEFAULT_ROLE = DEPLOY_ROLE
   DEFAULT_WAREHOUSE = DEPLOYMENT_WH;

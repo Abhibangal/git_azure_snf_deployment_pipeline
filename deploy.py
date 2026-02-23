@@ -123,6 +123,7 @@ try:
     conn = snowflake.connector.connect(
         account=os.getenv("SNOWFLAKE_ACCOUNT"),
         authenticator="WORKLOAD_IDENTITY",
+        workload_identity_provider='AZURE',
         warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
         role=os.getenv("SNOWFLAKE_ROLE"),
         database=os.getenv("SNOWFLAKE_DATABASE")

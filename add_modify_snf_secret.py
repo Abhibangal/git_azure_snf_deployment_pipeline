@@ -52,7 +52,7 @@ def sync_snowflake_secrets(conn):
     cur.execute("""
         SELECT KEYVAULT_SECRET_NAME,
                LAST_KV_UPDATED
-        FROM METADATA.SECRET_SYNC_MAP
+        FROM CONFIG_DB.SECURITY_SCH.SECRET_SYNC_MAP
     """)
 
     rows = cur.fetchall()
@@ -145,37 +145,37 @@ def sync_snowflake_secrets(conn):
                 "-o",
                 "tsv"
             ]
-        
+
             secret_value = subprocess.check_output(value_cmd).decode().strip()
-        
+
             # Snowflake secret name
             sf_secret = kv_secret
-        
+
             # -------------------------------------------------
             # Case 1: Secret does NOT exist → CREATE
             # -------------------------------------------------
             if last_kv_updated is None:
             
                 print("Creating Snowflake secret...")
-        
+
                 sql = f"""
                 CREATE SECRET CONFIG_DB.SECURITY_SCH.{sf_secret}
                 TYPE = GENERIC_STRING
                 SECRET_STRING = '{secret_value}'
                 """
-        
+
             # -------------------------------------------------
             # Case 2: Secret exists but rotated → ALTER
             # -------------------------------------------------
             else:
             
                 print("Updating Snowflake secret using ALTER...")
-        
+
                 sql = f"""
                 ALTER SECRET CONFIG_DB.SECURITY_SCH.{sf_secret}
                 SET SECRET_STRING = '{secret_value}'
                 """
-        
+
             cur.execute(sql)
 
             # -------------------------------------------------

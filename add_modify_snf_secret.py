@@ -83,7 +83,9 @@ def sync_snowflake_secrets(conn):
     for secret_prop in secrets:
 
         kv_secret = secret_prop.name
-        kv_updated_dt = secret_prop.updated_on
+
+        # Azure timestamp is timezone aware
+        kv_updated_dt = secret_prop.updated_on.replace(tzinfo=None)
 
         print(f"\nProcessing Key Vault secret: {kv_secret}")
 
@@ -94,6 +96,10 @@ def sync_snowflake_secrets(conn):
 
         last_kv_updated = mapping.get(kv_secret)
 
+        print("Timestamp comparison:")
+        print(f"   Azure Key Vault updated_on : {kv_updated_dt}")
+        print(f"   Snowflake LAST_KV_UPDATED  : {last_kv_updated}")
+
         create_secret = False
         update_secret = False
 
@@ -101,12 +107,18 @@ def sync_snowflake_secrets(conn):
         # Detect create vs update
         # -----------------------------------------------------
         if last_kv_updated is None:
+
             print("🆕 New secret detected")
             create_secret = True
 
-        elif kv_updated_dt > last_kv_updated:
+        elif last_kv_updated and kv_updated_dt > last_kv_updated:
+
             print("🔄 Secret rotated")
             update_secret = True
+
+        else:
+
+            print("✔ No change detected")
 
         if create_secret or update_secret:
 

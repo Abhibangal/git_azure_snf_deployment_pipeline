@@ -119,7 +119,7 @@ def sync_snowflake_secrets(conn):
                 ALTER SECRET CONFIG_DB.SECURITY_SCH.{sf_secret}
                 SET SECRET_STRING = '{secret_value}'
                 """
-
+            print(f"sql {sql}")
             cur.execute(sql)
 
             # -------------------------------------------------

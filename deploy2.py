@@ -1,37 +1,17 @@
-"""
-deploy.py
-
-Main Snowflake deployment script.
-
-Responsibilities
-----------------
-1. Detect environment (dev / prod)
-2. Resolve databases from YAML config
-3. Resolve Key Vault from YAML config
-4. Validate Snowflake environment variables
-5. Connect to Snowflake using Azure Workload Identity
-6. Synchronize Azure Key Vault secrets
-7. Run schemachange migrations
-"""
-
 import os
 import subprocess
 import sys
 import yaml
 import traceback
-import json
-import snowflake.connector
-
-from add_modify_snf_secret import sync_snowflake_secrets
+import json  # Added to handle JSON formatting for --vars
 
 print("\n======================================")
 print("🚀 Snowflake Deployment Starting")
 print("======================================")
 
 try:
-
     # ---------------------------------------------------
-    # 1️⃣ Detect deployment environment
+    # 1️⃣ Get ENVIRONMENT (e.g., dev or prod)
     # ---------------------------------------------------
     environment = os.getenv("ENVIRONMENT")
 
@@ -42,7 +22,7 @@ try:
     print(f"✔ Environment detected: {environment}")
 
     # ---------------------------------------------------
-    # 2️⃣ Load database configuration
+    # 2️⃣ Load database mapping YAML
     # ---------------------------------------------------
     config_file = "deploy-database-map.yml"
 
@@ -53,64 +33,73 @@ try:
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
-    schemachange_vars = {}
+    if "databases" not in config:
+        print("❌ 'databases' section missing in YAML.")
+        sys.exit(1)
 
     print("\nResolving databases from YAML...\n")
 
-    for db_name in config["databases"]:
+    # ---------------------------------------------------
+    # 3️⃣ Resolve databases and build the VARS dictionary
+    # ---------------------------------------------------
+    # We create a dictionary to hold the key-value pairs for schemachange --vars
+    schemachange_vars = {}
 
+    for db_name in config["databases"]:
         env_map = config["databases"][db_name]
+
+        if environment not in env_map:
+            print(f"❌ No mapping for {db_name} in environment {environment}")
+            sys.exit(1)
 
         resolved_value = env_map[environment]
 
+        if not resolved_value:
+            print(f"❌ Empty value for {db_name}")
+            sys.exit(1)
+
+        # Keep your existing logic: Set as env var
         os.environ[db_name] = resolved_value
+        
+        # New logic: Add to the dictionary for the --vars flag
         schemachange_vars[db_name] = resolved_value
 
         print(f"✔ {db_name} → {resolved_value}")
 
+    # Convert the dictionary to a JSON string for the CLI
     vars_json_string = json.dumps(schemachange_vars)
+    print(f"\n✔ Constructed vars_json_string: {vars_json_string}")
 
     # ---------------------------------------------------
-    # 3️⃣ Resolve Key Vault from config
+    # 4️⃣ Validate METADATA specifically
     # ---------------------------------------------------
-    keyvault_config_file = "deploy-keyvault-map.yml"
+    metadata_db = os.getenv("SNOWFLAKE_DATABASE")
 
-    if not os.path.exists(keyvault_config_file):
-        print("❌ deploy-keyvault-map.yml not found.")
+    if not metadata_db:
+        print("❌ SNOWFLAKE_DATABASE was not set from YAML.")
         sys.exit(1)
 
-    with open(keyvault_config_file, "r") as f:
-        kv_config = yaml.safe_load(f)
-
-    kv_env_map = kv_config["keyvaults"]["SNOWFLAKE_SECRETS"]
-
-    keyvault_name = kv_env_map[environment]
-
-    os.environ["KEYVAULT_NAME"] = keyvault_name
-
-    print(f"\n✔ Key Vault resolved → {keyvault_name}")
+    print(f"\n✔ SNOWFLAKE_DATABASE database resolved to: {metadata_db}")
 
     # ---------------------------------------------------
-    # 4️⃣ Validate Snowflake environment variables
+    # 5️⃣ Validate Snowflake core variables
     # ---------------------------------------------------
     required_vars = [
         "SNOWFLAKE_ACCOUNT",
         "SNOWFLAKE_ROLE",
-        "SNOWFLAKE_WAREHOUSE",
-        "SNOWFLAKE_DATABASE"
+        "SNOWFLAKE_WAREHOUSE"
     ]
 
     print("\nValidating Snowflake variables...\n")
 
     for var in required_vars:
         if not os.getenv(var):
-            print(f"❌ Missing variable: {var}")
+            print(f"❌ Missing required variable: {var}")
             sys.exit(1)
-
         print(f"✔ {var} is set")
 
     # ---------------------------------------------------
-    # 5️⃣ Configure Azure Workload Identity
+    # 6️⃣ Configure Azure Workload Identity
     # ---------------------------------------------------
     os.environ["SNOWFLAKE_AUTHENTICATOR"] = "WORKLOAD_IDENTITY"
     os.environ["SNOWFLAKE_WORKLOAD_IDENTITY_PROVIDER"] = "AZURE"
@@ -118,28 +107,11 @@ try:
     print("\n✔ Using Azure Workload Identity")
 
     # ---------------------------------------------------
-    # 6️⃣ Establish Snowflake connection
-    # ---------------------------------------------------
-    conn = snowflake.connector.connect(
-        account=os.getenv("SNOWFLAKE_ACCOUNT"),
-        authenticator="WORKLOAD_IDENTITY",
-        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE"),
-        role=os.getenv("SNOWFLAKE_ROLE"),
-        database=os.getenv("SNOWFLAKE_DATABASE")
-    )
-
-    print("✔ Snowflake connection established")
-
-    # ---------------------------------------------------
-    # 7️⃣ Synchronize secrets from Azure Key Vault
-    # ---------------------------------------------------
-    sync_snowflake_secrets(conn)
-
-    # ---------------------------------------------------
-    # 8️⃣ Execute schemachange migrations
+    # 7️⃣ Run schemachange with --vars
     # ---------------------------------------------------
     print("\nStarting schemachange...\n")
 
+    # Construct the command, including the --vars flag with the JSON string
     cmd = [
         "schemachange",
         "deploy",
@@ -151,6 +123,7 @@ try:
     print("Command:", " ".join(cmd))
     print("\n--------------------------------------\n")
 
+    # Use shell=False (default) for security; subprocess.run handles the list correctly
     result = subprocess.run(cmd)
 
     print("\n--------------------------------------\n")
@@ -159,10 +132,7 @@ try:
         print("❌ Deployment failed.")
         sys.exit(result.returncode)
 
-    print("✅ Deployment successful")
-
-    conn.close()
-
+    print("✅ Deployment successful.")
     sys.exit(0)
 
 except Exception:

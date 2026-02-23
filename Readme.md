@@ -1,4 +1,4 @@
-# 🚀 GitHub → Azure → Snowflake Object Deployment Pipeline
+# 🤖  Building a Secure Snowflake CI/CD Pipeline with GitHub, Azure, and Workload Identity (No Secrets Required)
 
 ---
 

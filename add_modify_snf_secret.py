@@ -139,12 +139,14 @@ def sync_snowflake_secrets(conn):
                     INSERT (
                         KEYVAULT_SECRET_NAME,
                         SNOWFLAKE_SECRET_NAME,
+                        CREATED_DT,
                         LAST_KV_UPDATED,
                         LAST_SYNCED
                     )
                     VALUES (
                         '{kv_secret}',
                         '{kv_secret}',
+                        '{kv_updated_dt}',
                         '{kv_updated_dt}',
                         CURRENT_TIMESTAMP()
                     );

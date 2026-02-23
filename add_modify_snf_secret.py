@@ -15,147 +15,91 @@ Functionality
 4. Creates or updates Snowflake SECRET objects
 5. Updates metadata mapping table
 
-This module is called by deploy.py during deployment.
+Authentication
+--------------
+Uses Managed Identity via DefaultAzureCredential.
 """
 
 import os
-import subprocess
 from datetime import datetime
+
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 
 
 def sync_snowflake_secrets(conn):
-    """
-    Synchronize secrets between Azure Key Vault and Snowflake.
-
-    Parameters
-    ----------
-    conn : snowflake.connector connection
-        Existing Snowflake connection using Workload Identity.
-    """
 
     print("\n🔐 Starting Key Vault → Snowflake secret synchronization\n")
 
-    # ---------------------------------------------------------
-    # Get Key Vault name from environment variable
-    # (resolved earlier in deploy.py from config file)
-    # ---------------------------------------------------------
     keyvault_name = os.getenv("KEYVAULT_NAME")
 
     if not keyvault_name:
         raise Exception("KEYVAULT_NAME environment variable not set")
 
+    vault_url = f"https://{keyvault_name}.vault.azure.net"
+
+    credential = DefaultAzureCredential()
+    client = SecretClient(vault_url=vault_url, credential=credential)
+
     cur = conn.cursor()
 
     # ---------------------------------------------------------
-    # 1️⃣ Load existing mapping table from Snowflake
+    # 1️⃣ Load mapping table from Snowflake
     # ---------------------------------------------------------
     cur.execute("""
         SELECT KEYVAULT_SECRET_NAME,
                LAST_KV_UPDATED
-        FROM CONFIG_DB.SECURITY_SCH.SECRET_SYNC_MAP
+        FROM METADATA.SECRET_SYNC_MAP
     """)
 
     rows = cur.fetchall()
 
-    # Convert mapping table results to dictionary
     mapping = {}
 
     for kv_name, last_updated in rows:
         mapping[kv_name] = last_updated
 
     # ---------------------------------------------------------
-    # 2️⃣ List all secrets from Azure Key Vault
+    # 2️⃣ List secrets from Azure Key Vault
     # ---------------------------------------------------------
-    list_cmd = [
-        "az",
-        "keyvault",
-        "secret",
-        "list",
-        "--vault-name",
-        keyvault_name,
-        "--query",
-        "[].name",
-        "-o",
-        "tsv"
-    ]
+    secrets = client.list_properties_of_secrets()
 
-    secrets = subprocess.check_output(list_cmd).decode().splitlines()
+    for secret_prop in secrets:
 
-    # ---------------------------------------------------------
-    # 3️⃣ Process each secret
-    # ---------------------------------------------------------
-    for kv_secret in secrets:
+        kv_secret = secret_prop.name
+        kv_updated_dt = secret_prop.updated_on
 
         print(f"\nProcessing secret: {kv_secret}")
 
-        # -----------------------------------------------------
-        # Retrieve last updated timestamp from Key Vault
-        # -----------------------------------------------------
-        updated_cmd = [
-            "az",
-            "keyvault",
-            "secret",
-            "show",
-            "--vault-name",
-            keyvault_name,
-            "--name",
-            kv_secret,
-            "--query",
-            "attributes.updated",
-            "-o",
-            "tsv"
-        ]
-
-        kv_updated = subprocess.check_output(updated_cmd).decode().strip()
-
-        kv_updated_dt = datetime.fromisoformat(kv_updated.replace("Z", "+00:00"))
-
         last_kv_updated = mapping.get(kv_secret)
 
-        create_or_update = False
+        create_secret = False
+        update_secret = False
 
         # -----------------------------------------------------
-        # Determine whether to create or update secret
+        # Detect create vs update
         # -----------------------------------------------------
         if last_kv_updated is None:
-            print("🆕 New secret detected → creating Snowflake secret")
-            create_or_update = True
+            print("🆕 New secret detected")
+            create_secret = True
 
         elif kv_updated_dt > last_kv_updated:
-            print("🔄 Secret rotated → updating Snowflake secret")
-            create_or_update = True
+            print("🔄 Secret rotated")
+            update_secret = True
 
-        # -----------------------------------------------------
-        # Create or update Snowflake SECRET
-        # -----------------------------------------------------
-        if create_or_update:
-        
-            # Fetch secret value from Azure Key Vault
-            value_cmd = [
-                "az",
-                "keyvault",
-                "secret",
-                "show",
-                "--vault-name",
-                keyvault_name,
-                "--name",
-                kv_secret,
-                "--query",
-                "value",
-                "-o",
-                "tsv"
-            ]
+        if create_secret or update_secret:
 
-            secret_value = subprocess.check_output(value_cmd).decode().strip()
+            # Retrieve secret value
+            secret = client.get_secret(kv_secret)
+            secret_value = secret.value
 
-            # Snowflake secret name
             sf_secret = kv_secret
 
             # -------------------------------------------------
-            # Case 1: Secret does NOT exist → CREATE
+            # CREATE SECRET
             # -------------------------------------------------
-            if last_kv_updated is None:
-            
+            if create_secret:
+
                 print("Creating Snowflake secret...")
 
                 sql = f"""
@@ -165,11 +109,11 @@ def sync_snowflake_secrets(conn):
                 """
 
             # -------------------------------------------------
-            # Case 2: Secret exists but rotated → ALTER
+            # ALTER SECRET
             # -------------------------------------------------
             else:
-            
-                print("Updating Snowflake secret using ALTER...")
+
+                print("Updating Snowflake secret...")
 
                 sql = f"""
                 ALTER SECRET CONFIG_DB.SECURITY_SCH.{sf_secret}
@@ -179,7 +123,7 @@ def sync_snowflake_secrets(conn):
             cur.execute(sql)
 
             # -------------------------------------------------
-            # Update metadata mapping table
+            # Update mapping table
             # -------------------------------------------------
             cur.execute(f"""
                 MERGE INTO METADATA.SECRET_SYNC_MAP t
@@ -189,7 +133,7 @@ def sync_snowflake_secrets(conn):
                 ON t.KEYVAULT_SECRET_NAME = s.KEYVAULT_SECRET_NAME
                 WHEN MATCHED THEN
                     UPDATE SET
-                        LAST_KV_UPDATED = '{kv_updated}',
+                        LAST_KV_UPDATED = '{kv_updated_dt}',
                         LAST_SYNCED = CURRENT_TIMESTAMP()
                 WHEN NOT MATCHED THEN
                     INSERT (
@@ -201,15 +145,15 @@ def sync_snowflake_secrets(conn):
                     VALUES (
                         '{kv_secret}',
                         '{kv_secret}',
-                        '{kv_updated}',
+                        '{kv_updated_dt}',
                         CURRENT_TIMESTAMP()
                     );
             """)
 
-            print(f"✔ Snowflake secret created/updated: {sf_secret}")
+            print(f"✔ Snowflake secret synchronized: {sf_secret}")
 
         else:
-            print("✔ Secret already synchronized")
+            print("✔ Secret already up to date")
 
     cur.close()
 

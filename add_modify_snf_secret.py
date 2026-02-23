@@ -14,6 +14,17 @@ Functionality
       - ROTATED secrets
 4. Creates or updates Snowflake SECRET objects
 5. Updates metadata mapping table
+
+Key Behavior
+------------
+Azure Key Vault secrets may contain '-' in names.
+Snowflake object names do not support '-' without quoting.
+
+Therefore this script converts:
+    key-vault-secret  →  key_vault_secret
+
+Only the Snowflake secret name is converted.
+The Azure Key Vault name remains unchanged.
 """
 
 import os
@@ -65,7 +76,7 @@ def sync_snowflake_secrets(conn):
         mapping[kv_name] = last_updated
 
     # ---------------------------------------------------------
-    # 2️⃣ List secrets from Key Vault
+    # 2️⃣ List secrets from Azure Key Vault
     # ---------------------------------------------------------
     secrets = client.list_properties_of_secrets()
 
@@ -74,7 +85,12 @@ def sync_snowflake_secrets(conn):
         kv_secret = secret_prop.name
         kv_updated_dt = secret_prop.updated_on
 
-        print(f"\nProcessing secret: {kv_secret}")
+        print(f"\nProcessing Key Vault secret: {kv_secret}")
+
+        # Convert secret name for Snowflake
+        sf_secret = kv_secret.replace("-", "_")
+
+        print(f"Snowflake secret name will be: {sf_secret}")
 
         last_kv_updated = mapping.get(kv_secret)
 
@@ -94,11 +110,9 @@ def sync_snowflake_secrets(conn):
 
         if create_secret or update_secret:
 
-            # Retrieve secret value
+            # Retrieve secret value from Key Vault
             secret = client.get_secret(kv_secret)
             secret_value = secret.value
-
-            sf_secret = kv_secret
 
             # -------------------------------------------------
             # CREATE SECRET
@@ -126,20 +140,25 @@ def sync_snowflake_secrets(conn):
                 """
 
             # -------------------------------------------------
-            # Execute SQL with debugging
+            # Execute SQL
             # -------------------------------------------------
             try:
+
                 print("\nExecuting SQL:")
                 print(sql)
 
                 cur.execute(sql)
 
             except Exception as e:
+
                 print("\n❌ Snowflake query failed")
-                print("Secret:", sf_secret)
+                print("Key Vault Secret:", kv_secret)
+                print("Snowflake Secret:", sf_secret)
                 print("Query:")
                 print(sql)
+
                 traceback.print_exc()
+
                 raise e
 
             # -------------------------------------------------
@@ -165,7 +184,7 @@ def sync_snowflake_secrets(conn):
                     )
                     VALUES (
                         '{kv_secret}',
-                        '{kv_secret}',
+                        '{sf_secret}',
                         '{kv_updated_dt}',
                         '{kv_updated_dt}',
                         CURRENT_TIMESTAMP()
@@ -173,19 +192,24 @@ def sync_snowflake_secrets(conn):
             """
 
             try:
+
                 print("\nExecuting MERGE:")
                 print(merge_sql)
 
                 cur.execute(merge_sql)
 
             except Exception as e:
+
                 print("\n❌ MERGE query failed")
+
                 traceback.print_exc()
+
                 raise e
 
             print(f"✔ Snowflake secret synchronized: {sf_secret}")
 
         else:
+
             print("✔ Secret already up to date")
 
     cur.close()

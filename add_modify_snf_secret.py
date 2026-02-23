@@ -126,7 +126,7 @@ def sync_snowflake_secrets(conn):
             # Update mapping table
             # -------------------------------------------------
             cur.execute(f"""
-                MERGE INTO METADATA.SECRET_SYNC_MAP t
+                MERGE INTO CONFIG_DB.SECURITY_SCH.SECRET_SYNC_MAP t
                 USING (
                     SELECT '{kv_secret}' AS KEYVAULT_SECRET_NAME
                 ) s

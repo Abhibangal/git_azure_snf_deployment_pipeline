@@ -14,13 +14,10 @@ Functionality
       - ROTATED secrets
 4. Creates or updates Snowflake SECRET objects
 5. Updates metadata mapping table
-
-Authentication
---------------
-Uses Managed Identity via DefaultAzureCredential.
 """
 
 import os
+import traceback
 from datetime import datetime
 
 from azure.identity import DefaultAzureCredential
@@ -44,15 +41,23 @@ def sync_snowflake_secrets(conn):
     cur = conn.cursor()
 
     # ---------------------------------------------------------
-    # 1️⃣ Load mapping table from Snowflake
+    # 1️⃣ Load mapping table
     # ---------------------------------------------------------
-    cur.execute("""
-        SELECT KEYVAULT_SECRET_NAME,
-               LAST_KV_UPDATED
-        FROM CONFIG_DB.SECURITY_SCH.SECRET_SYNC_MAP
-    """)
+    try:
+        print("Loading mapping table...")
 
-    rows = cur.fetchall()
+        cur.execute("""
+            SELECT KEYVAULT_SECRET_NAME,
+                   LAST_KV_UPDATED
+            FROM CONFIG_DB.SECURITY_SCH.SECRET_SYNC_MAP
+        """)
+
+        rows = cur.fetchall()
+
+    except Exception as e:
+        print("❌ Failed to read SECRET_SYNC_MAP table")
+        traceback.print_exc()
+        raise e
 
     mapping = {}
 
@@ -60,7 +65,7 @@ def sync_snowflake_secrets(conn):
         mapping[kv_name] = last_updated
 
     # ---------------------------------------------------------
-    # 2️⃣ List secrets from Azure Key Vault
+    # 2️⃣ List secrets from Key Vault
     # ---------------------------------------------------------
     secrets = client.list_properties_of_secrets()
 
@@ -119,13 +124,28 @@ def sync_snowflake_secrets(conn):
                 ALTER SECRET CONFIG_DB.SECURITY_SCH.{sf_secret}
                 SET SECRET_STRING = '{secret_value}'
                 """
-            print(f"sql {sql}")
-            cur.execute(sql)
+
+            # -------------------------------------------------
+            # Execute SQL with debugging
+            # -------------------------------------------------
+            try:
+                print("\nExecuting SQL:")
+                print(sql)
+
+                cur.execute(sql)
+
+            except Exception as e:
+                print("\n❌ Snowflake query failed")
+                print("Secret:", sf_secret)
+                print("Query:")
+                print(sql)
+                traceback.print_exc()
+                raise e
 
             # -------------------------------------------------
             # Update mapping table
             # -------------------------------------------------
-            cur.execute(f"""
+            merge_sql = f"""
                 MERGE INTO CONFIG_DB.SECURITY_SCH.SECRET_SYNC_MAP t
                 USING (
                     SELECT '{kv_secret}' AS KEYVAULT_SECRET_NAME
@@ -150,7 +170,18 @@ def sync_snowflake_secrets(conn):
                         '{kv_updated_dt}',
                         CURRENT_TIMESTAMP()
                     );
-            """)
+            """
+
+            try:
+                print("\nExecuting MERGE:")
+                print(merge_sql)
+
+                cur.execute(merge_sql)
+
+            except Exception as e:
+                print("\n❌ MERGE query failed")
+                traceback.print_exc()
+                raise e
 
             print(f"✔ Snowflake secret synchronized: {sf_secret}")
 

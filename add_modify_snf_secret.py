@@ -49,7 +49,7 @@ def sync_snowflake_secrets(conn):
     cur.execute("""
         SELECT KEYVAULT_SECRET_NAME,
                LAST_KV_UPDATED
-        FROM METADATA.SECRET_SYNC_MAP
+        FROM CONFIG_DB.SECURITY_SCH.SECRET_SYNC_MAP
     """)
 
     rows = cur.fetchall()

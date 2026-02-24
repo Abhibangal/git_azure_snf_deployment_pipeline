@@ -1,0 +1,4 @@
+keyvaults:
+  SNOWFLAKE_SECRETS:
+    dev: kv-sf-dev-secrets
+    prod: kv-sf-prod-secrets

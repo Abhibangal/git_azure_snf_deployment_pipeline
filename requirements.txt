@@ -1,2 +1,5 @@
-schemachange
 snowflake-connector-python
+schemachange
+pyyaml
+azure-identity
+azure-keyvault-secrets

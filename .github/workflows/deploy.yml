@@ -117,12 +117,55 @@ jobs:
           --image acrsnowflakedeploy123.azurecr.io/schemachange:${{ github.sha }} \
           --set-env-vars ENVIRONMENT=$ENVIRONMENT SNOWFLAKE_DATABASE=$SNOWFLAKE_DATABASE
 
+
     # ----------------------------
-    # Start Container Job
+    # Start Container Job + Wait for Result
     # ----------------------------
-    - name: Start Azure Container Job
+    - name: Run Azure Container Job and Wait for Completion
       run: |
         set -euo pipefail
-        az containerapp job start \
-          --name job-snowflake-deploy \
-          --resource-group rg-snowflake-deploy
+
+        JOB_NAME="job-snowflake-deploy"
+        RG="rg-snowflake-deploy"
+
+        echo "Starting container app job..."
+
+        EXECUTION=$(az containerapp job start \
+          --name $JOB_NAME \
+          --resource-group $RG \
+          --query name \
+          -o tsv)
+
+        echo "Execution started: $EXECUTION"
+
+        echo "Waiting for job to finish..."
+
+        while true; do
+
+          STATUS=$(az containerapp job execution show \
+            --name $JOB_NAME \
+            --resource-group $RG \
+            --job-execution-name $EXECUTION \
+            --query "properties.status" \
+            -o tsv)
+
+          echo "Current status: $STATUS"
+
+          if [ "$STATUS" = "Succeeded" ]; then
+            echo "Job completed successfully"
+            break
+          fi
+
+          if [ "$STATUS" = "Failed" ]; then
+            echo "Job failed"
+            exit 1
+          fi
+
+          if [ "$STATUS" = "Canceled" ]; then
+            echo "Job canceled"
+            exit 1
+          fi
+
+          sleep 20
+
+        done

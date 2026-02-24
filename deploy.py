@@ -66,7 +66,7 @@ try:
         os.environ[db_name] = resolved_value
         schemachange_vars[db_name] = resolved_value
 
-        print(f"✔ {db_name} → {resolved_value}")
+        # print(f"✔ {db_name} → {resolved_value}")
 
     vars_json_string = json.dumps(schemachange_vars)
 
@@ -107,7 +107,7 @@ try:
             print(f"❌ Missing variable: {var}")
             sys.exit(1)
 
-        print(f"✔ {var} is set")
+        # print(f"✔ {var} is set")
 
     # ---------------------------------------------------
     # 5️⃣ Configure Azure Workload Identity
